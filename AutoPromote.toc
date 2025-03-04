@@ -1,0 +1,7 @@
+## Interface: 11200
+## Title: Auto Promote
+## Notes: Auto Promote Raid members
+## Author: ehawne
+# SavedVariablesPerCharacter: AutoPromoteDB
+## SavedVariables: AutoPromoteDB
+AutoPromote.lua
