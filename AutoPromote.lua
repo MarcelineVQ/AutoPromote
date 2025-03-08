@@ -309,9 +309,11 @@ local function handleCommands(msg,editbox)
   elseif args[1] == "mages" then
     AutoPromoteDB.promote_mages = not AutoPromoteDB.promote_mages
     arf_print("AutoPromote all mages: " .. (AutoPromoteDB.promote_mages and "on" or "off"))
+		Promote()
   elseif args[1] == "paladins" then
     AutoPromoteDB.promote_paladins = not AutoPromoteDB.promote_paladins
-    arf_print("AutoPromote all mages: " .. (AutoPromoteDB.promote_mages and "on" or "off"))
+    arf_print("AutoPromote all paladins: " .. (AutoPromoteDB.promote_paladins and "on" or "off"))
+		Promote()
   elseif args[1] == "promote" then
     Promote()
   else
