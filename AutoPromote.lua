@@ -47,14 +47,15 @@ end
 -- hooks
 --------------------
 UnitPopupButtons["RAID_AUTOPROMOTE"] = { text = "AutoPromote", checkable = 1, dist = 0 };
-UnitPopupMenus["RAID"] = { "RAID_LEADER", "RAID_PROMOTE", "RAID_AUTOPROMOTE", "RAID_DEMOTE", "RAID_REMOVE", "REPORT", "CANCEL" };
+UnitPopupMenus["RAID"] = { "RAID_LEADER", "LOOT_PROMOTE", "RAID_PROMOTE", "RAID_AUTOPROMOTE", "RAID_DEMOTE", "RAID_REMOVE", "REPORT", "IGNORE", "CANCEL" };
+
 local orig_UnitPopup_OnClick = UnitPopup_OnClick
 UnitPopup_OnClick = function (a1,a2,a3,a4,a5,a6,a7,a8,a9)
-  local dropdownFrame = getglobal(UIDROPDOWNMENU_INIT_MENU);
-	local button = this.value;
-	local unit = dropdownFrame.unit;
-	local name = dropdownFrame.name;
-	local server = dropdownFrame.server;
+  local dropdownFrame = _G[UIDROPDOWNMENU_INIT_MENU];
+  local button = this.value;
+  local unit = dropdownFrame.unit;
+  local name = dropdownFrame.name;
+  local server = dropdownFrame.server;
 
   if button == "RAID_AUTOPROMOTE" then
     name = string.lower(name)
@@ -72,6 +73,7 @@ end
 local orig_UnitPopup_ShowMenu = UnitPopup_ShowMenu
 function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 	-- Init variables
+	local server;
 	dropdownMenu.which = which;
 	dropdownMenu.unit = unit;
 	if ( unit and not name ) then
@@ -83,27 +85,28 @@ function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 
 	-- Determine which buttons should be shown or hidden
 	UnitPopup_HideButtons();
-	
+
 	-- If only one menu item (the cancel button) then don't show the menu
 	local count = 0;
-	for index, value in UnitPopupMenus[which] do
-		if( UnitPopupShown[index] == 1 and value ~= "CANCEL" ) then
+	for index, value in ipairs(UnitPopupMenus[which]) do
+		if ( UnitPopupShown[UIDROPDOWNMENU_MENU_LEVEL][index] == 1 and value ~= "CANCEL" ) then
 			count = count + 1;
 		end
 	end
 	if ( count < 1 ) then
 		return;
 	end
-	
+
+	local lootMethod = GetLootMethod();
+	local lootThreshold = GetLootThreshold();
 	-- Determine which loot method and which loot threshold are selected and set the corresponding buttons to the same text
-	dropdownMenu.selectedLootMethod = UnitLootMethod[GetLootMethod()].text;
+	dropdownMenu.selectedLootMethod = UnitLootMethod[lootMethod].text;
+	dropdownMenu.selectedLootThreshold = _G["ITEM_QUALITY"..lootThreshold.."_DESC"];
 	UnitPopupButtons["LOOT_METHOD"].text = dropdownMenu.selectedLootMethod;
-	UnitPopupButtons["LOOT_METHOD"].tooltipText = UnitLootMethod[GetLootMethod()].tooltipText;
-	dropdownMenu.selectedLootThreshold = getglobal("ITEM_QUALITY"..GetLootThreshold().."_DESC");
+	UnitPopupButtons["LOOT_METHOD"].tooltipText = UnitLootMethod[lootMethod].tooltipText;
 	UnitPopupButtons["LOOT_THRESHOLD"].text = dropdownMenu.selectedLootThreshold;
 	-- This allows player to view loot settings if he's not the leader
-	if ( ((GetNumPartyMembers() > 0) or (GetNumRaidMembers() > 0)) and IsPartyLeader() ) then
-		-- If this is true then player is the party leader
+	if ( IsPartyLeader() ) then
 		UnitPopupButtons["LOOT_METHOD"].nested = 1;
 		UnitPopupButtons["LOOT_THRESHOLD"].nested = 1;
 	else
@@ -114,13 +117,18 @@ function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 	-- If level 2 dropdown
 	local info;
 	local color;
-	local icon;
 	if ( UIDROPDOWNMENU_MENU_LEVEL == 2 ) then
 		dropdownMenu.which = UIDROPDOWNMENU_MENU_VALUE;
 		-- Set which menu is being opened
-		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] = {which = dropdownMenu.which, unit = dropdownMenu.unit};
-		for index, value in UnitPopupMenus[UIDROPDOWNMENU_MENU_VALUE] do
-			info = {};
+		if not OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] then OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] = {} end
+		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].which = UIDROPDOWNMENU_MENU_VALUE;
+		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].name = name;
+		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].unit = unit;
+		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].userData = userData;
+		OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].server = server;
+
+		for index, value in ipairs(UnitPopupMenus[UIDROPDOWNMENU_MENU_VALUE]) do
+			info = UIDropDownMenu_CreateInfo();
 			info.text = UnitPopupButtons[value].text;
 			info.owner = UIDROPDOWNMENU_MENU_VALUE;
 			-- Set the text color
@@ -142,49 +150,47 @@ function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 			elseif ( info.text == dropdownMenu.selectedLootThreshold ) then
 				info.checked = 1;
 			elseif ( strsub(value, 1, 12) == "RAID_TARGET_" ) then
-				local raidTargetIndex = GetRaidTargetIndex(unit);
-				if ( raidTargetIndex == index ) then
-					info.checked = 1;
-				end
+				info.checked = unit and GetRaidTargetIndex(unit) == index;
 			end
-			
+
 			info.value = value;
 			info.func = UnitPopup_OnClick;
 			-- Setup newbie tooltips
 			info.tooltipTitle = UnitPopupButtons[value].text;
-			info.tooltipText = getglobal("NEWBIE_TOOLTIP_UNIT_"..value);
+			info.tooltipText = _G["NEWBIE_TOOLTIP_UNIT_"..value];
 			UIDropDownMenu_AddButton(info, UIDROPDOWNMENU_MENU_LEVEL);
 		end
-		return;			
+		return;
 	end
 
 	-- Add dropdown title
 	if ( unit or name ) then
-		info = {};
-		if ( name ) then
-			info.text = name;
-		else
-			info.text = TEXT(UNKNOWN);
-		end
+		info = UIDropDownMenu_CreateInfo();
+		info.text = name or UNKNOWN;
 		info.isTitle = 1;
 		info.notCheckable = 1;
 		UIDropDownMenu_AddButton(info);
 	end
-	
+
 	-- Set which menu is being opened
-	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] = {which = dropdownMenu.which, unit = dropdownMenu.unit};
+	if not OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] then OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL] = {} end
+	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].which = which;
+	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].name = name;
+	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].unit = unit;
+	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].userData = userData;
+	OPEN_DROPDOWNMENUS[UIDROPDOWNMENU_MENU_LEVEL].server = server;
+
 	-- Show the buttons which are used by this menu
 	local tooltipText;
-	for index, value in UnitPopupMenus[which] do
-		if( UnitPopupShown[index] == 1 ) then
-      local checked = false
-			info = {};
+	for index, value in ipairs(UnitPopupMenus[which]) do
+		if ( UnitPopupShown[UIDROPDOWNMENU_MENU_LEVEL][index] == 1 ) then
+			info = UIDropDownMenu_CreateInfo();
 			info.text = UnitPopupButtons[value].text;
-			if ( value == 'MOVE' ) then
-				if ( dropdownMenu.unit == 'player' ) then
-					info.text = PlayerFrame.movable and "Lock Frame" or "Unlock Frame"
-				elseif ( dropdownMenu.unit == 'target' ) then
-					info.text = TargetFrame.movable and "Lock Frame" or "Unlock Frame"
+			if ( value == "MOVE" ) then
+				if ( dropdownMenu.unit == "player" ) then
+					info.text = PlayerFrame.movable and UNIT_POPUP_FRAME_LOCK or UNIT_POPUP_FRAME_UNLOCK
+				elseif ( dropdownMenu.unit == "target" ) then
+					info.text = TargetFrame.movable and UNIT_POPUP_FRAME_LOCK or UNIT_POPUP_FRAME_UNLOCK
 				end
 			end
 			info.value = value;
@@ -196,7 +202,7 @@ function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 			-- Text color
 			if ( value == "LOOT_THRESHOLD" ) then
 				-- Set the text color
-				color = ITEM_QUALITY_COLORS[GetLootThreshold()];
+				color = ITEM_QUALITY_COLORS[lootThreshold];
 				info.textR = color.r;
 				info.textG = color.g;
 				info.textB = color.b;
@@ -215,29 +221,24 @@ function UnitPopup_ShowMenu2(dropdownMenu, which, unit, name, userData)
 			info.tCoordTop = UnitPopupButtons[value].tCoordTop;
 			info.tCoordBottom = UnitPopupButtons[value].tCoordBottom;
 
-      if value == "RAID_AUTOPROMOTE" then
-        if AutoPromoteDB.watch_names[string.lower(name)] then
-            info.checked = 1
-        end
-      end
+			-- AutoPromote checked state
+			if value == "RAID_AUTOPROMOTE" then
+				if name and AutoPromoteDB.watch_names[string.lower(name)] then
+					info.checked = 1
+				end
+			end
 
 			-- Checked conditions
 			if ( strsub(value, 1, 12) == "RAID_TARGET_" ) then
-				local raidTargetIndex = GetRaidTargetIndex("target");
-				if ( raidTargetIndex == index ) then
-					info.checked = 1;
-				end
+				info.checked = unit and GetRaidTargetIndex("target") == index;
 			end
 			if ( UnitPopupButtons[value].nested ) then
 				info.hasArrow = 1;
 			end
-			
+
 			-- Setup newbie tooltips
-			info.tooltipTitle = UnitPopupButtons[value].text;
-			tooltipText = getglobal("NEWBIE_TOOLTIP_UNIT_"..value);
-			if ( not tooltipText ) then
-				tooltipText = UnitPopupButtons[value].tooltipText;
-			end
+			info.tooltipTitle = info.text;
+			tooltipText = _G["NEWBIE_TOOLTIP_UNIT_"..value] or UnitPopupButtons[value].tooltipText;
 			info.tooltipText = tooltipText;
 			UIDropDownMenu_AddButton(info);
 		end
@@ -271,15 +272,14 @@ local function Init()
             then s[k] = defaults[k]
             else s[k] = AutoPromoteDB[k] end
         end
-        -- is the above just: s[k] = ((AutoManaSettings[k] == nil) and defaults[k]) or AutoManaSettings[k]
         AutoPromoteDB = s
     end
     AutoPromote:SetScript("OnEvent", OnEvent)
   end
 end
 
-AutoPromote:RegisterEvent("RAID_ROSTER_UPDATE") -- fired on player join or leave, or offline, party or raid. also when raid forms
-AutoPromote:RegisterEvent("PLAYER_ENTERING_WORLD") -- fired on player join or leave, or offline, party or raid. also when raid forms
+AutoPromote:RegisterEvent("RAID_ROSTER_UPDATE")
+AutoPromote:RegisterEvent("PLAYER_ENTERING_WORLD")
 AutoPromote:RegisterEvent("ADDON_LOADED")
 AutoPromote:SetScript("OnEvent", Init)
 
@@ -329,4 +329,3 @@ end
 
 SLASH_AUTOPROMOTE1 = "/autopromote";
 SlashCmdList["AUTOPROMOTE"] = handleCommands
-
